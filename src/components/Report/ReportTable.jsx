@@ -13,36 +13,28 @@ function ReportTable() {
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [riskFilter, setRiskFilter] = useState("ALL");
 
-  // ✅ CHANGED: ROOM FILTER → TEXT SEARCH
   const [roomSearch, setRoomSearch] = useState("");
+
+  const [departmentFilter, setDepartmentFilter] = useState("");
+  const [yearFilter, setYearFilter] = useState("");
 
   const [dateFilter, setDateFilter] = useState("");
 
   const { routers } = useSignalContext();
-
   const authorizedSsids = routers.map((r) => r.ssid);
 
   async function loadData() {
-
     setLoading(true);
 
     const data = await getReports();
 
     const sorted = data.sort((a, b) => {
-
-      const timeA = a.timestamp?.seconds
-        ? a.timestamp.seconds * 1000
-        : 0;
-
-      const timeB = b.timestamp?.seconds
-        ? b.timestamp.seconds * 1000
-        : 0;
-
+      const timeA = a.timestamp?.seconds ? a.timestamp.seconds * 1000 : 0;
+      const timeB = b.timestamp?.seconds ? b.timestamp.seconds * 1000 : 0;
       return timeB - timeA;
     });
 
     setLogs(sorted);
-
     setLoading(false);
   }
 
@@ -50,17 +42,29 @@ function ReportTable() {
     loadData();
   }, []);
 
-  function formatDateTime(timestamp) {
-    if (!timestamp?.seconds) {
-      return "No Time";
-    }
+  // ================= FIXED DATE/TIME FUNCTION =================
+// Inside ReportTable.js - Update the formatDateTime function
 
-    const date = new Date(timestamp.seconds * 1000);
-    return date.toLocaleString();
-  }
+function formatDateTime(timestamp) {
+  if (!timestamp) return "---,---";
+  
+  const date = (timestamp instanceof Date) ? timestamp : new Date(timestamp);
+  
+  if (isNaN(date.getTime())) return "Invalid,Date";
+
+  // Formats as: May 15 2026, 10:30:45 AM
+  return date.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true
+  }).replace(',', ''); // Remove the default comma for custom splitting
+}
 
   // ================= FILTER LOGIC =================
-
   const filteredLogs = useMemo(() => {
 
     return logs.filter((log) => {
@@ -82,17 +86,26 @@ function ReportTable() {
         riskFilter === "ALL" ||
         (risk || "").toUpperCase() === riskFilter;
 
-      // ✅ UPDATED ROOM LOGIC (TEXT SEARCH)
       const matchesRoom =
         roomSearch === "" ||
-        (log.room || "")
-          .toLowerCase()
-          .includes(roomSearch.toLowerCase());
+        (log.room || "").toLowerCase().includes(roomSearch.toLowerCase());
+
+      const matchesDepartment =
+        departmentFilter === "" ||
+        (log.department || "") === departmentFilter;
+
+      const normalizeYear = (y) => {
+        if (y === null || y === undefined) return "";
+        return String(y).trim().replace(/\D/g, "");
+      };
+
+      const matchesYear =
+        yearFilter === "" ||
+        normalizeYear(log.year) === normalizeYear(yearFilter);
 
       let matchesDate = true;
 
       if (dateFilter) {
-
         const logDate = log.timestamp?.seconds
           ? new Date(log.timestamp.seconds * 1000)
           : new Date();
@@ -112,6 +125,8 @@ function ReportTable() {
         matchesCategory &&
         matchesRisk &&
         matchesRoom &&
+        matchesDepartment &&
+        matchesYear &&
         matchesDate
       );
 
@@ -123,15 +138,20 @@ function ReportTable() {
     categoryFilter,
     riskFilter,
     roomSearch,
+    departmentFilter,
+    yearFilter,
     dateFilter,
     authorizedSsids
   ]);
 
-  const totalDevices = filteredLogs.length;
+  const totalDevices = useMemo(() => filteredLogs.length, [filteredLogs]);
 
-  const authorizedCount = filteredLogs.filter((log) =>
-    authorizedSsids.includes(log.ssid)
-  ).length;
+  const authorizedCount = useMemo(
+    () => filteredLogs.filter((log) =>
+      authorizedSsids.includes(log.ssid)
+    ).length,
+    [filteredLogs, authorizedSsids]
+  );
 
   const unauthorizedCount = totalDevices - authorizedCount;
 
@@ -139,17 +159,17 @@ function ReportTable() {
     setSearch("");
     setCategoryFilter("ALL");
     setRiskFilter("ALL");
-    setRoomSearch(""); // ✅ UPDATED
+    setRoomSearch("");
+    setDepartmentFilter("");
+    setYearFilter("");
     setDateFilter("");
   }
 
   return (
-
     <div className="max-w-7xl mx-auto px-4 space-y-6">
 
       {/* HEADER */}
       <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8">
-
         <div className="flex flex-col lg:flex-row justify-between gap-6">
 
           <div>
@@ -165,41 +185,7 @@ function ReportTable() {
             logs={filteredLogs}
             authorizedSsids={authorizedSsids}
           />
-
         </div>
-
-      </div>
-
-      {/* STATS */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-
-        <div className="bg-white rounded-2xl p-6 shadow-sm border-l-4 border-blue-500">
-          <p className="text-xs uppercase font-bold text-gray-400">
-            Filtered Devices
-          </p>
-          <h2 className="text-3xl font-black text-slate-800 mt-2">
-            {totalDevices}
-          </h2>
-        </div>
-
-        <div className="bg-white rounded-2xl p-6 shadow-sm border-l-4 border-green-500">
-          <p className="text-xs uppercase font-bold text-gray-400">
-            Authorized
-          </p>
-          <h2 className="text-3xl font-black text-green-600 mt-2">
-            {authorizedCount}
-          </h2>
-        </div>
-
-        <div className="bg-white rounded-2xl p-6 shadow-sm border-l-4 border-red-500">
-          <p className="text-xs uppercase font-bold text-gray-400">
-            Unauthorized
-          </p>
-          <h2 className="text-3xl font-black text-red-600 mt-2">
-            {unauthorizedCount}
-          </h2>
-        </div>
-
       </div>
 
       {/* FILTERS */}
@@ -236,14 +222,37 @@ function ReportTable() {
             <option value="LOW">Low</option>
           </select>
 
-          {/* ✅ ROOM SEARCH INPUT (REPLACED DROPDOWN) */}
           <input
             type="text"
             placeholder="Search Room (e.g.100)"
             value={roomSearch}
             onChange={(e) => setRoomSearch(e.target.value)}
-            className="border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500"
+            className="border border-gray-200 rounded-xl px-4 py-3"
           />
+
+          <select
+            value={departmentFilter}
+            onChange={(e) => setDepartmentFilter(e.target.value)}
+            className="border border-gray-200 rounded-xl px-4 py-3"
+          >
+            <option value="">All Departments</option>
+            <option value="ECE">ECE</option>
+            <option value="CS">CS</option>
+            <option value="Management">Management</option>
+          </select>
+
+          <select
+            value={yearFilter}
+            onChange={(e) => setYearFilter(e.target.value)}
+            className="border border-gray-200 rounded-xl px-4 py-3"
+          >
+            <option value="">All Years</option>
+            <option value="1">Year 1</option>
+            <option value="2">Year 2</option>
+            <option value="3">Year 3</option>
+            <option value="4">Year 4</option>
+            <option value="5">Year 5</option>
+          </select>
 
           <input
             type="date"
@@ -277,6 +286,12 @@ function ReportTable() {
       {/* TABLE */}
       <div className="bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden">
 
+        <div className="px-6 py-4 border-b text-sm font-bold text-slate-700">
+          Total Devices (Filtered): {totalDevices} |
+          Authorized: {authorizedCount} |
+          Unauthorized: {unauthorizedCount}
+        </div>
+
         <div className="overflow-x-auto">
 
           <table className="min-w-full text-left">
@@ -287,88 +302,89 @@ function ReportTable() {
                 <th className="px-8 py-5">SSID</th>
                 <th className="px-8 py-5">MAC Address</th>
                 <th className="px-8 py-5">Room</th>
+                <th className="px-8 py-5">Department</th>
+                <th className="px-8 py-5">Year</th>
                 <th className="px-8 py-5">Category</th>
                 <th className="px-8 py-5">Signal</th>
                 <th className="px-8 py-5">Risk</th>
               </tr>
             </thead>
 
-            <tbody className="divide-y divide-gray-50">
-
+            <tbody>
               {loading ? (
-                <tr>
-                  <td colSpan="7" className="text-center py-20 text-gray-400">
-                    Loading data...
-                  </td>
-                </tr>
-              ) : filteredLogs.length === 0 ? (
-                <tr>
-                  <td colSpan="7" className="text-center py-20 text-gray-400">
-                    No matching logs found.
-                  </td>
-                </tr>
-              ) : (
+                <tr><td className="px-8 py-10 text-gray-400">Loading...</td></tr>
+              ) : filteredLogs.map((log) => {
 
-                filteredLogs.map((log) => {
+                const isAuth = authorizedSsids.includes(log.ssid);
+                const signalVal = log.rssi ?? log.dBm ?? -100;
+                const risk = dBmToRisk(signalVal);
 
-                  const isAuth = authorizedSsids.includes(log.ssid);
-                  const signalVal = log.rssi ?? log.dBm ?? -100;
-                  const risk = dBmToRisk(signalVal);
+                return (
+                  <tr key={log.id} className="hover:bg-slate-50 transition">
 
-                  return (
-                    <tr key={log.id} className="hover:bg-slate-50 transition">
+   <td className="px-8 py-5 text-xs font-bold text-gray-500 whitespace-nowrap">
+  <div className="flex flex-col">
+    {/* This splits the formatted string to show Date on top and Time on bottom */}
+    <span>
+      {formatDateTime(log.timestamp).split(' at ')[0]}
+    </span> 
+    <span className="text-blue-500 font-medium">
+      {formatDateTime(log.timestamp).split(' at ')[1]}
+    </span>
+  </div>
+</td>
 
-                      <td className="px-8 py-5 text-xs font-bold text-gray-500">
-                        {formatDateTime(log.timestamp)}
-                      </td>
+                    <td className="px-8 py-5 font-bold text-slate-800">
+                      {log.ssid || "Hidden"}
+                    </td>
 
-                      <td className="px-8 py-5 font-bold text-slate-800">
-                        {log.ssid || "Hidden"}
-                      </td>
+                    <td className="px-8 py-5 text-xs font-mono text-gray-500">
+                      {log.mac}
+                    </td>
 
-                      <td className="px-8 py-5 text-xs font-mono text-gray-500">
-                        {log.mac}
-                      </td>
+                    <td className="px-8 py-5 text-sm text-gray-600">
+                      {log.room || "Exam Hall A"}
+                    </td>
 
-                      <td className="px-8 py-5 text-sm text-gray-600">
-                        {log.room || "Exam Hall A"}
-                      </td>
+                    <td className="px-8 py-5 text-sm text-gray-600">
+                      {log.department || "-"}
+                    </td>
 
-                      <td className="px-8 py-5">
-                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
-                          isAuth
-                            ? "bg-green-100 text-green-700"
-                            : "bg-red-100 text-red-700"
-                        }`}>
-                          {isAuth ? "Authorized" : "Unauthorized"}
-                        </span>
-                      </td>
+                    <td className="px-8 py-5 text-sm text-gray-600">
+                      {log.year || "-"}
+                    </td>
 
-                      <td className="px-8 py-5 font-black text-slate-700">
-                        {signalVal} dBm
-                      </td>
+                    <td className="px-8 py-5">
+                      <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                        isAuth
+                          ? "bg-green-100 text-green-700"
+                          : "bg-red-100 text-red-700"
+                      }`}>
+                        {isAuth ? "Authorized" : "Unauthorized"}
+                      </span>
+                    </td>
 
-                      <td className="px-8 py-5">
-                        <span className={`font-black uppercase text-xs ${
-                          isAuth
-                            ? "text-green-600"
-                            : risk === "High"
-                            ? "text-red-600"
-                            : risk === "Medium"
-                            ? "text-yellow-600"
-                            : "text-gray-500"
-                        }`}>
-                          {isAuth ? "Safe" : risk}
-                        </span>
-                      </td>
+                    <td className="px-8 py-5 font-black text-slate-700">
+                      {signalVal} dBm
+                    </td>
 
-                    </tr>
-                  );
+                    <td className="px-8 py-5">
+                      <span className={`font-black uppercase text-xs ${
+                        isAuth
+                          ? "text-green-600"
+                          : risk === "High"
+                          ? "text-red-600"
+                          : risk === "Medium"
+                          ? "text-yellow-600"
+                          : "text-gray-500"
+                      }`}>
+                        {isAuth ? "Safe" : risk}
+                      </span>
+                    </td>
 
-                })
-
-              )}
-
+                  </tr>
+                );
+              })}
             </tbody>
 
           </table>
