@@ -16,7 +16,6 @@ function RouterList() {
     <div className="bg-white rounded-2xl shadow overflow-hidden">
 
       <table className="w-full">
-
         <thead className="bg-gray-50">
           <tr>
             <th className="p-4 text-left">SSID</th>
