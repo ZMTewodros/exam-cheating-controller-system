@@ -75,7 +75,7 @@ function LoginPage() {
             </h2>
           </Link>
           <p className="text-sm font-medium text-slate-500 mt-2">
-            {isRegistering ? "Register a new proctor supervisor account" : "Sign in to monitor RF environment devices"}
+            {isRegistering ? "Register a new proctor supervisor account" : "Sign in to monitor  devices"}
           </p>
         </div>
 

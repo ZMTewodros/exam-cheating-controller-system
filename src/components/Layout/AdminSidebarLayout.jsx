@@ -39,9 +39,15 @@ function AdminSidebarLayout({ children }) {
         {/* HEADER */}
         <div className="p-6 border-b border-slate-800">
 
-          <h1 className="text-xl font-black tracking-wider text-blue-400">
-            EXAM GUARD
-          </h1>
+          {/* HOME PAGE LINK */}
+          <Link
+            to="/"
+            className="inline-block"
+          >
+            <h1 className="text-xl font-black tracking-wider text-blue-400 hover:text-blue-300 transition">
+              EXAM GUARD
+            </h1>
+          </Link>
 
           <p className="text-[10px] uppercase text-slate-400 font-bold tracking-widest mt-1">
 
