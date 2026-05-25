@@ -1,17 +1,43 @@
-import React, { useState, useMemo, useEffect } from "react";
-import { doc, setDoc, onSnapshot } from "firebase/firestore";
+import React, {
+  useState,
+  useMemo,
+  useEffect,
+  useRef,
+} from "react";
+
+import {
+  doc,
+  setDoc,
+  onSnapshot,
+} from "firebase/firestore";
+
 import { db } from "../../firebase/config";
+
 import { useSignalContext } from "../../context/SignalContext";
+
 import { useAuth } from "../../context/AuthContext";
+
 import SignalCard from "../../components/Dashboard/SignalCard";
-import { deleteSignal, deleteAllSignals } from "../../firebase/services";
+
+import {
+  deleteSignal,
+  deleteAllSignals,
+} from "../../firebase/services";
+
 import { dBmToRisk } from "../../utils/helpers";
-import { Navigate, Link } from "react-router-dom";
+
+import {
+  Navigate,
+  Link,
+} from "react-router-dom";
 
 function DashboardPage() {
 
-  const { signals, routers, loading: signalsLoading } =
-    useSignalContext();
+  const {
+    signals,
+    routers,
+    loading: signalsLoading,
+  } = useSignalContext();
 
   const {
     profile,
@@ -20,33 +46,41 @@ function DashboardPage() {
   } = useAuth();
 
   // ================= STATES =================
+
   const [search, setSearch] = useState("");
+  const [riskFilter, setRiskFilter] = useState("All Risk Levels");
+  const [isScanning, setIsScanning] = useState(false);
+  const [department, setDepartment] = useState("");
+  const [year, setYear] = useState("");
+  const [room, setRoom] = useState("");
 
-  const [riskFilter, setRiskFilter] =
-    useState("All Risk Levels");
+  // ================= AUDIO CONTROL (ONLY FIXED PART) =================
 
-  const [isScanning, setIsScanning] =
-    useState(false);
+  const audioRef = useRef(null);
+  const intervalRef = useRef(null);
 
-  const [department, setDepartment] =
-    useState("");
+  const playSound = () => {
+    if (!audioRef.current) {
+      audioRef.current = new Audio("/alert.mp3"); // 👈 YOUR FILE IN PUBLIC FOLDER
+      audioRef.current.volume = 1;
+    }
 
-  const [year, setYear] =
-    useState("");
-
-  const [room, setRoom] =
-    useState("");
+    audioRef.current.currentTime = 0;
+    audioRef.current.play().catch(() => {
+      // autoplay may be blocked in browser until user interaction
+    });
+  };
 
   // ================= AUTHORIZED SSIDS =================
-  const authorizedSsids = useMemo(
-    () =>
-      routers
-        ? routers.map((r) =>
-            r.ssid?.trim().toLowerCase()
-          )
-        : [],
-    [routers]
-  );
+
+  const authorizedDevices = useMemo(() => {
+  return routers
+    ? routers.map((r) => ({
+        ssid: r.ssid?.trim().toLowerCase(),
+        mac: r.mac?.trim().toLowerCase(),
+      }))
+    : [];
+}, [routers]);
 
   const controlRef = useMemo(
     () => doc(db, "control", "scanner"),
@@ -54,78 +88,115 @@ function DashboardPage() {
   );
 
   // ================= REALTIME SCANNER =================
+
   useEffect(() => {
+    const unsub = onSnapshot(controlRef, (docSnap) => {
+      if (!docSnap.exists()) return;
 
-    const unsub = onSnapshot(
-      controlRef,
-      (docSnap) => {
+      const data = docSnap.data();
 
-        if (!docSnap.exists()) return;
-
-        const data = docSnap.data();
-
-        setIsScanning(data.status === "start");
-
-        setDepartment(data.department || "");
-        setYear(data.year || "");
-        setRoom(data.room || "");
-      }
-    );
+      setIsScanning(data.status === "start");
+      setDepartment(data.department || "");
+      setYear(data.year || "");
+      setRoom(data.room || "");
+    });
 
     return () => unsub();
-
   }, [controlRef]);
 
   // ================= FILTER ONLY UNAUTHORIZED =================
+
   const filteredSignals = useMemo(() => {
 
-    if (!signals) return [];
+  if (!signals) return [];
 
-    return signals.filter((signal) => {
+  const filtered = signals.filter((signal) => {
 
-      const risk =
-        dBmToRisk(signal.rssi);
+    const risk = dBmToRisk(signal.rssi);
 
-      const signalSSID =
-        signal.ssid
-          ?.trim()
-          .toLowerCase();
+    const signalSSID =
+      signal.ssid?.trim().toLowerCase();
+      const signalMAC = signal.mac?.trim().toLowerCase();
 
-      // ONLY UNAUTHORIZED
-      const isAuthorized =
-        authorizedSsids.includes(signalSSID);
 
-      if (isAuthorized) return false;
+    const isAuthorized = authorizedDevices.some((device) => {
+  return (
+    device.ssid === signalSSID &&
+    device.mac === signalMAC
+  );
+});
 
-      // SEARCH
-      const matchesSearch =
-        signal.ssid
-          ?.toLowerCase()
-          .includes(search.toLowerCase()) ||
+    // REMOVE AUTHORIZED NETWORKS
+    if (isAuthorized) return false;
 
-        signal.mac
-          ?.toLowerCase()
-          .includes(search.toLowerCase());
+    const matchesSearch =
+      signal.ssid
+        ?.toLowerCase()
+        .includes(search.toLowerCase()) ||
 
-      // RISK FILTER
-      const matchesRisk =
-        riskFilter === "All Risk Levels" ||
-        risk === riskFilter;
+      signal.mac
+        ?.toLowerCase()
+        .includes(search.toLowerCase());
 
-      return matchesSearch && matchesRisk;
+    const matchesRisk =
+      riskFilter === "All Risk Levels" ||
+      risk === riskFilter;
 
-    });
+    return matchesSearch && matchesRisk;
+  });
 
-  }, [
-    signals,
-    search,
-    riskFilter,
-    authorizedSsids,
-  ]);
+  // ================= SORT BY STRONGEST RSSI =================
+  // Higher RSSI (-40) comes before lower RSSI (-80)
+
+  filtered.sort((a, b) => {
+    return b.rssi - a.rssi;
+  });
+
+  return filtered;
+
+}, [
+  signals,
+  search,
+  riskFilter,
+  authorizedDevices,
+]);
+  // ================= 🔊 MP3 ALERT SYSTEM (FIXED) =================
+
+  useEffect(() => {
+
+    // STOP OLD SOUND FIRST
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+    }
+
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+
+    if (isScanning && filteredSignals.length > 0) {
+
+      playSound(); // immediate
+
+      intervalRef.current = setInterval(() => {
+        playSound();
+      }, 8000); // repeat every 8 sec
+    }
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+    };
+
+  }, [filteredSignals, isScanning]);
 
   // ================= LOADING =================
-  if (authLoading) {
 
+  if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <p className="text-slate-500 font-semibold text-lg">
@@ -135,15 +206,11 @@ function DashboardPage() {
     );
   }
 
-  // ================= NOT LOGGED IN =================
   if (!currentUser) {
-
     return <Navigate to="/login" replace />;
   }
 
-  // ================= PROFILE LOADING =================
   if (profile === null || profile === undefined) {
-
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <p className="text-slate-500 font-semibold text-lg">
@@ -155,15 +222,10 @@ function DashboardPage() {
 
   const isAdmin = profile?.role === "admin";
 
-  // ================= UNAPPROVED USER =================
   if (profile?.isApproved !== true) {
-
     return (
-
       <div className="min-h-screen flex items-center justify-center bg-slate-100 p-6">
-
         <div className="bg-white p-10 rounded-3xl shadow-lg border border-yellow-200 text-center max-w-md w-full">
-
           <div className="w-20 h-20 mx-auto rounded-full bg-yellow-100 flex items-center justify-center mb-6">
             <span className="text-4xl">⏳</span>
           </div>
@@ -184,22 +246,16 @@ function DashboardPage() {
           >
             Back to Login
           </Link>
-
         </div>
-
       </div>
     );
   }
 
   // ================= START SCAN =================
+
   async function startScanning() {
-
     if (!department || !year || !room) {
-
-      alert(
-        "Please select Department, Year and Room"
-      );
-
+      alert("Please select Department, Year and Room");
       return;
     }
 
@@ -212,7 +268,16 @@ function DashboardPage() {
   }
 
   // ================= STOP SCAN =================
+
   async function stopScanning() {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+    }
+
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
 
     await setDoc(controlRef, {
       status: "stop",
@@ -223,41 +288,41 @@ function DashboardPage() {
   }
 
   // ================= DELETE ALL =================
-  async function handleDeleteAll() {
 
+  async function handleDeleteAll() {
     if (!isAdmin) return;
 
-    const ok = window.confirm(
-      "Delete ALL scanned signals?"
-    );
-
+    const ok = window.confirm("Delete ALL scanned signals?");
     if (!ok) return;
 
     await deleteAllSignals(filteredSignals);
   }
 
-  // ================= STATS =================
-  const totalDevices =
-    filteredSignals.length;
+  // ================= UI =================
 
-  const unauthorizedCount =
-    filteredSignals.length;
+  const totalDevices = filteredSignals.length;
+  const unauthorizedCount = filteredSignals.length;
 
   // ================= DASHBOARD =================
+
   return (
 
     <div className="space-y-6">
 
       {/* FILTERS */}
+
       <div className="grid md:grid-cols-3 gap-4">
 
         <select
           value={department}
           onChange={(e) =>
-            setDepartment(e.target.value)
+            setDepartment(
+              e.target.value
+            )
           }
           className="border p-3 rounded-xl bg-white"
         >
+
           <option value="">
             Select Department
           </option>
@@ -279,10 +344,13 @@ function DashboardPage() {
         <select
           value={year}
           onChange={(e) =>
-            setYear(e.target.value)
+            setYear(
+              e.target.value
+            )
           }
           className="border p-3 rounded-xl bg-white"
         >
+
           <option value="">
             Select Year
           </option>
@@ -313,7 +381,9 @@ function DashboardPage() {
           type="text"
           value={room}
           onChange={(e) =>
-            setRoom(e.target.value)
+            setRoom(
+              e.target.value
+            )
           }
           placeholder="Enter Room Number"
           className="border p-3 rounded-xl bg-white"
@@ -322,34 +392,45 @@ function DashboardPage() {
       </div>
 
       {/* BUTTONS */}
+
       <div className="flex flex-wrap gap-4 items-center">
 
         <button
           onClick={startScanning}
           className="bg-green-600 text-white px-6 py-3 rounded-xl font-bold"
         >
+
           Start Scanning
+
         </button>
 
         <button
           onClick={stopScanning}
           className="bg-red-600 text-white px-6 py-3 rounded-xl font-bold"
         >
+
           Stop Scanning
+
         </button>
 
         {isAdmin && (
+
           <button
-            onClick={handleDeleteAll}
+            onClick={
+              handleDeleteAll
+            }
             className="ml-auto bg-black text-white px-6 py-3 rounded-xl font-bold"
           >
+
             Delete All Scanned
+
           </button>
         )}
 
       </div>
 
       {/* STATUS */}
+
       <div>
 
         <span
@@ -359,14 +440,17 @@ function DashboardPage() {
               : "bg-red-100 text-red-700"
           }`}
         >
+
           {isScanning
             ? "Scanning System: Active"
             : "Scanning System: Off"}
+
         </span>
 
       </div>
 
       {/* SEARCH */}
+
       <div className="grid md:grid-cols-2 gap-4 bg-white p-4 rounded-2xl shadow-sm">
 
         <input
@@ -374,7 +458,9 @@ function DashboardPage() {
           placeholder="Search SSID or MAC"
           value={search}
           onChange={(e) =>
-            setSearch(e.target.value)
+            setSearch(
+              e.target.value
+            )
           }
           className="border p-3 rounded-xl"
         />
@@ -382,10 +468,13 @@ function DashboardPage() {
         <select
           value={riskFilter}
           onChange={(e) =>
-            setRiskFilter(e.target.value)
+            setRiskFilter(
+              e.target.value
+            )
           }
           className="border p-3 rounded-xl"
         >
+
           <option>
             All Risk Levels
           </option>
@@ -407,58 +496,80 @@ function DashboardPage() {
       </div>
 
       {/* STATS */}
+
       <div className="grid md:grid-cols-2 gap-6">
 
         <div className="bg-white p-6 rounded-2xl shadow-sm">
+
           <p className="text-sm text-gray-400">
+
             Total Devices
+
           </p>
 
           <h1 className="text-3xl font-black">
+
             {totalDevices}
+
           </h1>
+
         </div>
 
         <div className="bg-white p-6 rounded-2xl shadow-sm">
+
           <p className="text-sm text-gray-400">
+
             Unauthorized
+
           </p>
 
           <h1 className="text-3xl font-black text-red-600">
+
             {unauthorizedCount}
+
           </h1>
+
         </div>
 
       </div>
 
       {/* SIGNALS */}
+
       {signalsLoading ? (
 
         <div className="text-center py-10">
+
           Loading network logs...
+
         </div>
 
       ) : filteredSignals.length === 0 ? (
 
         <div className="bg-white p-10 rounded-2xl text-center">
+
           No unauthorized signals found.
+
         </div>
 
       ) : (
 
         <div className="grid gap-4">
 
-          {filteredSignals.map((signal) => (
+          {filteredSignals.map(
+            (signal) => (
 
-            <SignalCard
-              key={signal.id}
-              signal={signal}
-              isAdmin={isAdmin}
-              isAuthorized={false}
-              onDelete={deleteSignal}
-            />
+              <SignalCard
+                key={signal.id}
+                signal={signal}
+                isAdmin={isAdmin}
+                isAuthorized={false}
+                onDelete={
+                  deleteSignal
+                }
+              />
 
-          ))}
+            )
+          )}
 
         </div>
 

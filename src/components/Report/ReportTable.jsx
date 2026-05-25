@@ -237,21 +237,21 @@ function ReportTable() {
 
           </div>
 
-          <div className="flex flex-wrap gap-4">
-
-            <ExportCSV
-              logs={filteredLogs}
-              authorizedSsids={authorizedSsids}
-            />
+<div className="flex flex-wrap gap-4 w-full">            <div className="w-full sm:w-auto">
+  <ExportCSV
+    logs={filteredLogs}
+    authorizedSsids={authorizedSsids}
+  />
+</div>
 
             {isAdmin && (
 
               <button
-                onClick={handleDeleteAll}
-                className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-xl font-bold transition"
-              >
-                Delete All Reports
-              </button>
+  onClick={handleDeleteAll}
+  className="px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors"
+>
+  Delete All Reports
+</button>
 
             )}
 

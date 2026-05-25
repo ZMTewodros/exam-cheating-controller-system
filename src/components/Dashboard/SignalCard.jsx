@@ -50,4 +50,4 @@ function SignalCard({ signal, isAuthorized, isAdmin, onDelete }) {
   );
 }
 
-export default SignalCard;
+export default  SignalCard;
