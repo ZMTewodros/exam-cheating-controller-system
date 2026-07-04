@@ -30,7 +30,6 @@ ESP32
    ▼
 Unauthorized Device Detection
    │
-   ├── Green LED
    ├── Red LED
    ├── Buzzer Alert
    │
@@ -49,7 +48,6 @@ React Dashboard
 
 - ESP32 Development Board
 - Active Buzzer
-- Green LED
 - Red LED
 
 ### Software
@@ -140,7 +138,7 @@ Exam-Cheating-System/
 ### Clone the repository
 
 ```bash
-git clone https://github.com/yourusername/exam-cheating-system.git
+git clone https://github.com/ZMTewodros/exam-cheating-controller-system.git
 ```
 
 ### Install frontend dependencies
@@ -175,7 +173,6 @@ npm run dev
 
 ## Future Improvements
 
-- BLE device detection
 - Device fingerprinting
 - MAC spoofing detection
 - Multiple ESP32 scanners
