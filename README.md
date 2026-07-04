@@ -198,13 +198,13 @@ npm run dev
 
 ## Author
 
-**Tewodros**
+**Tewodros Melkamu**
 
-Computer Engineering Graduate
+Electrical and Computer Engineering Graduate
 
-GitHub: https://github.com/yourusername
+GitHub: https://github.com/ZMTewodros
 
-LinkedIn: https://linkedin.com/in/yourprofile
+LinkedIn: https://www.linkedin.com/in/tewodros-melkamu-32987436b
 
 ---
 
